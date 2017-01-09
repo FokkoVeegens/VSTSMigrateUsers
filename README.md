@@ -14,6 +14,7 @@ On beforehand, the following tasks need to be done manually:
 The tool requires a configuration file as input. A sample configuration file is provided. The most important settings to change are:
 * Provide your VSTS account (vstsUri)
 * Provide the user mapping(s) (UserMapping)
+* Change "contoso" to the subdomain of your VSTS account (vstsSecurityServiceGroup) 
 * It is recommended to leave other settings as they are
 
 # Usage

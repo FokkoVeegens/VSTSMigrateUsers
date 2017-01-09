@@ -1,14 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PermissionCopyConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
-	<vstsUri>https://dnalmteam.visualstudio.com</vstsUri>
-	<vstsSecurityServiceGroup>[dnalmteam]\Security Service Group</vstsSecurityServiceGroup>
+	<vstsUri>https://contoso.visualstudio.com</vstsUri>
+	<vstsSecurityServiceGroup>[contoso]\Security Service Group</vstsSecurityServiceGroup>
 	<excludedGroups>
 		<string>[TEAM FOUNDATION]\Team Foundation Invited Users</string>
 	</excludedGroups>
 	<userMappings>
 		<UserMapping>
-			<sourceUser>fokko@hotmail.com</sourceUser>
-			<targetUser>fokkov@delta-n.nl</targetUser>
+			<sourceUser>user1@live.com</sourceUser>
+			<targetUser>user1@contoso.com</targetUser>
+		</UserMapping>
+		<UserMapping>
+			<sourceUser>user2@live.com</sourceUser>
+			<targetUser>user2@contoso.com</targetUser>
 		</UserMapping>
 	</userMappings>
 </PermissionCopyConfiguration>
