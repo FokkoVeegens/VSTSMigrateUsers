@@ -6,6 +6,8 @@ using Microsoft.TeamFoundation.Framework.Common;
 using Microsoft.TeamFoundation.WorkItemTracking.Client;
 using System.Xml.Serialization;
 using System.IO;
+using System.Linq;
+using Microsoft.TeamFoundation.Server;
 
 namespace VSTSMigrateUsers.CLI
 {
@@ -17,6 +19,9 @@ namespace VSTSMigrateUsers.CLI
 		private static TfsTeamProjectCollection _tfs;
 		private static IIdentityManagementService _ims;
 		private static WorkItemStore _wistore;
+		private static IEventService _es;
+		private static ICommonStructureService4 _ics;
+		private static List<ProjectInfo> _teamProjects;
 		private static List<string> _excludedGroups;
 		private static string _securityServiceGroup;
 		private static List<UserMapping> _userMappings;
@@ -50,14 +55,21 @@ namespace VSTSMigrateUsers.CLI
 			// Execute the work
 			foreach (UserMapping mapping in _userMappings)
 			{
-				if (!CopyPermissions(mapping.sourceUser, mapping.targetUser))
+				TeamFoundationIdentity sourceUser = GetIdentityByName(mapping.sourceUser);
+				TeamFoundationIdentity targetUser = GetIdentityByName(mapping.targetUser);
+				if (!CopyPermissions(sourceUser, targetUser))
 				{
-					WriteLog("Stopped execution");
+					WriteLog(LogLevel.Error, "Stopped execution");
 					break;
 				}
 				if (!ReassignWorkitems(mapping.sourceUser, mapping.targetUser))
 				{
-					WriteLog("Stopped execution");
+					WriteLog(LogLevel.Error, "Stopped execution");
+					break;
+				}
+				if (!MigrateAlerts(sourceUser, targetUser))
+				{
+					WriteLog(LogLevel.Error, "Stopped execution");
 					break;
 				}
 			}
@@ -85,6 +97,7 @@ namespace VSTSMigrateUsers.CLI
 					_tfs = new TfsTeamProjectCollection(new Uri(_config.vstsUri));
 					_ims = (IIdentityManagementService)_tfs.GetService<IIdentityManagementService>();
 					_wistore = new WorkItemStore(_tfs, WorkItemStoreFlags.BypassRules);
+					_es = (IEventService)_tfs.GetService<IEventService>();
 					_excludedGroups = _config.excludedGroups;
 					_securityServiceGroup = _config.vstsSecurityServiceGroup;
 					_userMappings = _config.userMappings;
@@ -95,7 +108,10 @@ namespace VSTSMigrateUsers.CLI
 				WriteLog(LogLevel.Error, string.Format("An error occurred reading the configuration file. Please verify the format. The error is:\n{0}", ex.ToString()));
 				return false;
 			}
-			
+
+			_ics = (ICommonStructureService4)_tfs.GetService<ICommonStructureService4>();
+			_teamProjects = _ics.ListAllProjects().ToList();
+
 			return true;
 		}
 
@@ -128,15 +144,11 @@ namespace VSTSMigrateUsers.CLI
 			return true;
 		}
 
-		private static bool CopyPermissions(string sourceUserName, string targetUserName)
+		private static bool CopyPermissions(TeamFoundationIdentity sourceUser, TeamFoundationIdentity targetUser)
 		{
-			// Retrieve user to copy from
-			TeamFoundationIdentity sourceUser = GetIdentityByName(sourceUserName);
-			TeamFoundationIdentity targetUser = GetIdentityByName(targetUserName);
-
 			if (sourceUser == null)
 			{
-				WriteLog(LogLevel.Error, string.Format("The source user {0} cannot be found\nPlease add this user to the users list first before running this tool. Do you want to continue with the next user (y/n)?", sourceUserName));
+				WriteLog(LogLevel.Error, string.Format("The source user {0} cannot be found\nPlease add this user to the users list first before running this tool. Do you want to continue with the next user (y/n)?", sourceUser.UniqueName));
 				if (Console.ReadKey().Key != ConsoleKey.Y)
 				{
 					return false;
@@ -145,7 +157,7 @@ namespace VSTSMigrateUsers.CLI
 
 			if (targetUser == null)
 			{
-				WriteLog(LogLevel.Error, string.Format("The target user {0} cannot be found\nPlease add this user to the users list first before running this tool. Do you want to continue with the next user (y/n)?", targetUserName));
+				WriteLog(LogLevel.Error, string.Format("The target user {0} cannot be found\nPlease add this user to the users list first before running this tool. Do you want to continue with the next user (y/n)?", targetUser.UniqueName));
 				if (Console.ReadKey().Key != ConsoleKey.Y)
 				{
 					return false;
@@ -153,7 +165,7 @@ namespace VSTSMigrateUsers.CLI
 			}
 
 			// Copy permissions based on direct group membership
-			WriteLog(string.Format("Copying permissions from {0} to {1}", sourceUserName, targetUserName));
+			WriteLog(string.Format("Copying permissions from {0} to {1}", sourceUser.UniqueName, targetUser.UniqueName));
 			foreach (IdentityDescriptor group in sourceUser.MemberOf)
 			{
 				TeamFoundationIdentity groupIdentity = GetIdentityBySid(group.Identifier);
@@ -168,7 +180,7 @@ namespace VSTSMigrateUsers.CLI
 					continue;
 				}
 
-				WriteLog(LogLevel.Ok, string.Format("Adding user {0} to group {1}", targetUserName, groupIdentity.DisplayName));
+				WriteLog(LogLevel.Ok, string.Format("Adding user {0} to group {1}", targetUser.UniqueName, groupIdentity.DisplayName));
 
 				try
 				{
@@ -177,11 +189,11 @@ namespace VSTSMigrateUsers.CLI
 				catch (AddMemberIdentityAlreadyMemberException)
 				{
 					// Is already member, skip
-					WriteLog(LogLevel.Ok, string.Format("The user {0} is already a member of the group {1}", targetUserName, groupIdentity.DisplayName));
+					WriteLog(LogLevel.Ok, string.Format("The user {0} is already a member of the group {1}", targetUser.UniqueName, groupIdentity.DisplayName));
 				}
 				catch (Exception ex)
 				{
-					WriteLog(LogLevel.Error, string.Format("The user {0} cannot be added to the group {1}: {2}\n\nDo you want to continue with the next user/group (y/n)?", targetUserName, groupIdentity.DisplayName, ex.ToString()));
+					WriteLog(LogLevel.Error, string.Format("The user {0} cannot be added to the group {1}: {2}\n\nDo you want to continue with the next user/group (y/n)?", targetUser.UniqueName, groupIdentity.DisplayName, ex.ToString()));
 					if (Console.ReadKey().Key != ConsoleKey.Y)
 					{
 						return false;
@@ -189,6 +201,41 @@ namespace VSTSMigrateUsers.CLI
 				}
 								
 			}
+			return true;
+		}
+
+		private static bool MigrateAlerts(TeamFoundationIdentity sourceUser, TeamFoundationIdentity targetUser)
+		{
+			WriteLog(LogLevel.Ok, "Copying subscriptions");
+			List<Subscription> userSubscriptions = _es.GetEventSubscriptions(sourceUser.Descriptor).ToList();
+			
+			foreach (Subscription subs in userSubscriptions)
+			{
+				string teamProjectName = GetTeamProjectNameById(subs.ProjectId);
+				if (subs.Tag.Contains("CodeReviewChangedEvent"))
+				{
+					WriteLog(string.Format("Skipping CodeReviewChangedEvent for user '{0}' in Team Project '{1}'", sourceUser.UniqueName, teamProjectName));
+					continue;
+				}
+				WriteLog(string.Format("Migrating subscription '{0}' in Team Project '{1}' from user '{2}' to user '{3}'", ConvertSubscriptionTagToName(subs.Tag), teamProjectName, sourceUser.UniqueName, targetUser.UniqueName));
+				DeliveryPreference deliverPreference = new DeliveryPreference();
+				deliverPreference.Address = targetUser.UniqueName;
+				deliverPreference.Schedule = subs.DeliveryPreference.Schedule;
+				deliverPreference.Type = subs.DeliveryPreference.Type;
+
+				try
+				{
+					_es.SubscribeEvent(targetUser.Descriptor.Identifier, subs.EventType, subs.ConditionString, deliverPreference, subs.Tag, teamProjectName);
+					WriteLog(LogLevel.Ok, "Migration succeeded");
+				}
+				catch (Exception ex)
+				{
+					WriteLog(LogLevel.Error, string.Format("Migration failed: {0}, continuing to next subscription", ex.ToString()));
+				}
+				
+			}
+			WriteLog(LogLevel.Ok, "Finished copying subscriptions");
+			
 			return true;
 		}
 
@@ -200,6 +247,16 @@ namespace VSTSMigrateUsers.CLI
 		private static TeamFoundationIdentity GetIdentityBySid(string SID)
 		{
 			return _ims.ReadIdentity(IdentitySearchFactor.Identifier, SID, MembershipQuery.Direct, ReadIdentityOptions.ExtendedProperties);
+		}
+
+		private static string GetTeamProjectNameById(Guid projectId)
+		{
+			return (_teamProjects.FirstOrDefault(t => t.Uri == "vstfs:///Classification/TeamProject/" + projectId.ToString())).Name;
+		}
+
+		private static string ConvertSubscriptionTagToName(string tag)
+		{
+			return tag.Replace("<PT N=\"", string.Empty).Replace("\" />", string.Empty);
 		}
 
 		private static void WriteLog(string logText)

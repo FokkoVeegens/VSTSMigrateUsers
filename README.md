@@ -5,6 +5,7 @@ Easily migrate a Visual Studio Team Services (VSTS) account from using MSA's (Mi
 The output of this code is a (Windows) command line utility that is able to do two things:
 * Copy direct group membership from one to another user inside VSTS (and do this for multiple users)
 * Reassign Work Items from one to another user
+* Copy Work Item Alerts from one to another user (excludes default Code Review Alerts, doesn't exclude already existing Alerts)
 
 # Prerequisites
 On beforehand, the following tasks need to be done manually:
