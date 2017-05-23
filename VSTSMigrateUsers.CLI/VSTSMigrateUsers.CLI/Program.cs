@@ -236,7 +236,14 @@ namespace VSTSMigrateUsers.CLI
         private static bool MigrateAlerts(TeamFoundationIdentity sourceUser, TeamFoundationIdentity targetUser)
         {
             WriteLog(LogLevel.Ok, "Copying subscriptions");
-            List<Subscription> userSubscriptions = _es.GetEventSubscriptions(sourceUser.Descriptor).ToList();
+
+            Subscription[] userSubscriptions = _es.GetEventSubscriptions(sourceUser.Descriptor);
+
+            if(userSubscriptions == null || !userSubscriptions.Any())
+            {
+                WriteLog(LogLevel.Warning, "No subscriptions found.");
+                return true;
+            }
 
             foreach (Subscription subs in userSubscriptions)
             {
