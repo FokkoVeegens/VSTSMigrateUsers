@@ -237,7 +237,18 @@ namespace VSTSMigrateUsers.CLI
         {
             WriteLog(LogLevel.Ok, "Copying subscriptions");
 
-            Subscription[] userSubscriptions = _es.GetEventSubscriptions(sourceUser.Descriptor);
+            Subscription[] userSubscriptions = null;
+
+            try
+            {
+                userSubscriptions = _es.GetEventSubscriptions(sourceUser.Descriptor);
+            }
+            catch (Exception e)
+            {
+                WriteLog(LogLevel.Warning, "Could not get subscriptions for user " + sourceUser.Descriptor + ": " + e.Message + ".");
+                WriteLog(LogLevel.Warning, "Skipping subscriptions.");
+                return true;
+            }
 
             if(userSubscriptions == null || !userSubscriptions.Any())
             {
