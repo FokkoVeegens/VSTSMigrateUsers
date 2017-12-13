@@ -1,3 +1,5 @@
+<img src="https://fokkoveegens.visualstudio.com/_apis/public/build/definitions/05fae6df-eb68-4b52-aac4-7ac9c84d0d32/17/badge">
+
 # VSTSMigrateUsers
 Easily migrate a Visual Studio Team Services (VSTS) account from using MSA's (Microsoft Accounts) to AAD (Azure Active Directory) accounts
 
